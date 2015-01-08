@@ -1,0 +1,14 @@
+[package]
+name = "c_vec"
+version = "1.0.0"
+authors = ["Guillaume Gomez <guillaume1.gomez@gmail.com>"]
+
+description = "The old c_vec struct"
+repository = "https://github.com/GuillaumeGomez/c_vec-rs.git"
+readme = "README.md"
+keywords = ["c", "vec", "c_vec"]
+license = "Apache-2.0/MIT"
+
+[lib]
+name = "c_vec"
+crate-type = ["dylib", "rlib"]
