@@ -33,8 +33,8 @@
 //! if necessary.
 
 #![feature(unsafe_destructor)]
+#![allow(unstable)]
 
-use std::kinds::Send;
 use std::mem;
 use std::ops::{Drop, FnOnce};
 use std::option::Option;
@@ -48,7 +48,7 @@ use std::thunk::{Thunk};
 /// The type representing a foreign chunk of memory
 pub struct CVec<T> {
     base: *mut T,
-    len: uint,
+    len: usize,
     dtor: Option<Thunk>,
 }
 
@@ -72,7 +72,7 @@ impl<T> CVec<T> {
     ///
     /// * base - A raw pointer to a buffer
     /// * len - The number of elements in the buffer
-    pub unsafe fn new(base: *mut T, len: uint) -> CVec<T> {
+    pub unsafe fn new(base: *mut T, len: usize) -> CVec<T> {
         assert!(base != ptr::null_mut());
         CVec {
             base: base,
@@ -93,7 +93,7 @@ impl<T> CVec<T> {
     /// * dtor - A fn to run when the value is destructed, useful
     ///          for freeing the buffer, etc.
     pub unsafe fn new_with_dtor<F>(base: *mut T,
-                                   len: uint,
+                                   len: usize,
                                    dtor: F)
                                    -> CVec<T>
         where F : FnOnce(), F : Send
@@ -116,9 +116,9 @@ impl<T> CVec<T> {
 
     /// Retrieves an element at a given index, returning `None` if the requested
     /// index is greater than the length of the vector.
-    pub fn get<'a>(&'a self, ofs: uint) -> Option<&'a T> {
+    pub fn get<'a>(&'a self, ofs: usize) -> Option<&'a T> {
         if ofs < self.len {
-            Some(unsafe { &*self.base.offset(ofs as int) })
+            Some(unsafe { &*self.base.offset(ofs as isize) })
         } else {
             None
         }
@@ -126,9 +126,9 @@ impl<T> CVec<T> {
 
     /// Retrieves a mutable element at a given index, returning `None` if the
     /// requested index is greater than the length of the vector.
-    pub fn get_mut<'a>(&'a mut self, ofs: uint) -> Option<&'a mut T> {
+    pub fn get_mut<'a>(&'a mut self, ofs: usize) -> Option<&'a mut T> {
         if ofs < self.len {
-            Some(unsafe { &mut *self.base.offset(ofs as int) })
+            Some(unsafe { &mut *self.base.offset(ofs as isize) })
         } else {
             None
         }
@@ -154,7 +154,7 @@ impl<T> CVec<T> {
     pub unsafe fn unwrap(self) -> *mut T { self.into_inner() }
 
     /// Returns the number of items in this vector.
-    pub fn len(&self) -> uint { self.len }
+    pub fn len(&self) -> usize { self.len }
 
     /// Returns whether this vector is empty.
     pub fn is_empty(&self) -> bool { self.len() == 0 }
