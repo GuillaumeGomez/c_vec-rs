@@ -32,8 +32,7 @@
 //! handled correctly, i.e. that allocated memory is eventually freed
 //! if necessary.
 
-#![feature(unsafe_destructor)]
-#![allow(unstable)]
+#![feature(unsafe_destructor, core, std_misc)]
 
 use std::mem;
 use std::ops::{Drop, FnOnce};
