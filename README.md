@@ -31,4 +31,4 @@ Here's is the [crates.io](https://crates.io/crates/c_vec) page for `c_vec`.
 License
 =======
 
-This project is under the MIT and Apache 2.0 licenses. Please look at the license files for more information.
+This project is under the MIT and Apache 2.0 licenses. Please take a look at the license files for more information.
