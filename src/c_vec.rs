@@ -45,14 +45,14 @@ use std::slice::AsSlice;
 use std::thunk::{Thunk};
 
 /// The type representing a foreign chunk of memory
-pub struct CVec<T> {
+pub struct CVec<'b, T> {
     base: *mut T,
     len: usize,
-    dtor: Option<Thunk>,
+    dtor: Option<Thunk<'b>>
 }
 
 #[unsafe_destructor]
-impl<T> Drop for CVec<T> {
+impl<'b, T> Drop for CVec<'b T> {
     fn drop(&mut self) {
         match self.dtor.take() {
             None => (),
@@ -61,7 +61,7 @@ impl<T> Drop for CVec<T> {
     }
 }
 
-impl<T> CVec<T> {
+impl<'b, T> CVec<'b, T> {
     /// Create a `CVec` from a raw pointer to a buffer with a given length.
     ///
     /// Panics if the given pointer is null. The returned vector will not attempt
@@ -71,7 +71,7 @@ impl<T> CVec<T> {
     ///
     /// * base - A raw pointer to a buffer
     /// * len - The number of elements in the buffer
-    pub unsafe fn new(base: *mut T, len: usize) -> CVec<T> {
+    pub unsafe fn new(base: *mut T, len: usize) -> CVec<'b, T> {
         assert!(base != ptr::null_mut());
         CVec {
             base: base,
@@ -94,8 +94,8 @@ impl<T> CVec<T> {
     pub unsafe fn new_with_dtor<F>(base: *mut T,
                                    len: usize,
                                    dtor: F)
-                                   -> CVec<T>
-        where F : FnOnce(), F : Send
+                                   -> CVec<'b, T>
+        where F : FnOnce(), F : Send, F : 'b
     {
         assert!(base != ptr::null_mut());
         let dtor: Thunk = Thunk::new(dtor);
@@ -159,7 +159,7 @@ impl<T> CVec<T> {
     pub fn is_empty(&self) -> bool { self.len() == 0 }
 }
 
-impl<T> AsSlice<T> for CVec<T> {
+impl<'b, T> AsSlice<T> for CVec<'b, T> {
     /// View the stored data as a slice.
     fn as_slice<'a>(&'a self) -> &'a [T] {
         unsafe {
