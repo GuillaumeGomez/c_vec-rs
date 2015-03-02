@@ -1,6 +1,6 @@
 [package]
 name = "c_vec"
-version = "1.0.5"
+version = "1.0.6"
 authors = ["Guillaume Gomez <guillaume1.gomez@gmail.com>"]
 
 description = "The old c_vec struct"

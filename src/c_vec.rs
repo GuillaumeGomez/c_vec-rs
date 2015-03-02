@@ -161,6 +161,118 @@ impl<T> AsSlice<T> for CVec<T> {
     }
 }
 
+/// The type representing an 'unsafe' foreign chunk of memory
+pub struct CSlice<T> {
+    base: T,
+    len: usize,
+    dtor: Option<Box<Invoke<*mut T> + 'static>>
+}
+
+#[unsafe_destructor]
+impl<T> Drop for CVec<T> {
+    fn drop(&mut self) {
+        match self.dtor.take() {
+            None => (),
+            Some(f) => f.invoke(*self.base),
+        }
+    }
+}
+
+impl<T> CVec<T> {
+    /// Create a `CVec` from a raw pointer to a buffer with a given length.
+    ///
+    /// Panics if the given pointer is null. The returned vector will not attempt
+    /// to deallocate the vector when dropped.
+    ///
+    /// # Arguments
+    ///
+    /// * base - A raw pointer to a buffer
+    /// * len - The number of elements in the buffer
+    pub unsafe fn new(base: Unique<T>, len: usize) -> CVec<T> {
+        assert!(*base != ptr::null_mut());
+        CVec {
+            base: base,
+            len: len,
+            dtor: None,
+        }
+    }
+
+    /// Create a `CVec` from a foreign buffer, with a given length,
+    /// and a function to run upon destruction.
+    ///
+    /// Panics if the given pointer is null.
+    ///
+    /// # Arguments
+    ///
+    /// * base - A unique pointer to a buffer
+    /// * len - The number of elements in the buffer
+    /// * dtor - A fn to run when the value is destructed, useful
+    ///          for freeing the buffer, etc. `base` will be passed
+    ///          to it as an argument.
+    pub unsafe fn new_with_dtor<F>(base: Unique<T>,
+                                   len: usize,
+                                   dtor: F)
+                                   -> CVec<T>
+        where F : FnOnce(*mut T) + 'static
+    {
+        assert!(*base != ptr::null_mut());
+        let dtor = Box::new(dtor);
+        CVec {
+            base: base,
+            len: len,
+            dtor: Some(dtor)
+        }
+    }
+
+    /// View the stored data as a mutable slice.
+    pub fn as_mut_slice<'a>(&'a mut self) -> &'a mut [T] {
+        unsafe {
+            mem::transmute(raw::Slice { data: *self.base as *const T, len: self.len })
+        }
+    }
+
+    /// Retrieves an element at a given index, returning `None` if the requested
+    /// index is greater than the length of the vector.
+    pub fn get<'a>(&'a self, ofs: usize) -> Option<&'a T> {
+        if ofs < self.len {
+            Some(unsafe { &*self.base.offset(ofs as isize) })
+        } else {
+            None
+        }
+    }
+
+    /// Retrieves a mutable element at a given index, returning `None` if the
+    /// requested index is greater than the length of the vector.
+    pub fn get_mut<'a>(&'a mut self, ofs: usize) -> Option<&'a mut T> {
+        if ofs < self.len {
+            Some(unsafe { &mut *self.base.offset(ofs as isize) })
+        } else {
+            None
+        }
+    }
+
+    /// Unwrap the pointer without running the destructor
+    ///
+    /// This method retrieves the underlying pointer, and in the process
+    /// destroys the CVec but without running the destructor. A use case
+    /// would be transferring ownership of the buffer to a C function, as
+    /// in this case you would not want to run the destructor.
+    ///
+    /// Note that if you want to access the underlying pointer without
+    /// cancelling the destructor, you can simply call `transmute` on the return
+    /// value of `get(0)`.
+    pub unsafe fn into_inner(mut self) -> *mut T {
+        self.dtor = None;
+        *self.base
+    }
+
+    /// Returns the number of items in this vector.
+    pub fn len(&self) -> usize { self.len }
+
+    /// Returns whether this vector is empty.
+    pub fn is_empty(&self) -> bool { self.len() == 0 }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate alloc;
