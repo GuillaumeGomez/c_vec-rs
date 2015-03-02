@@ -2,4 +2,4 @@ language: rust
 sudo: false
 script:
   - rustc --version
-  - cargo build
+  - cargo test
