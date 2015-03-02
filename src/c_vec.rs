@@ -23,45 +23,41 @@
 //! are marshalled through get and set functions.
 //!
 //! There are three unsafe functions: the two constructors, and the
-//! unwrap method. The constructors are unsafe for the
+//! unwrapping method. The constructors are unsafe for the
 //! obvious reason (they act on a pointer that cannot be checked inside the
-//! method), but `unwrap()` is somewhat more subtle in its unsafety.
+//! method), but `into_inner()` is somewhat more subtle in its unsafety.
 //! It returns the contained pointer, but at the same time destroys the CVec
 //! without running its destructor. This can be used to pass memory back to
 //! C, but care must be taken that the ownership of underlying resources are
 //! handled correctly, i.e. that allocated memory is eventually freed
 //! if necessary.
 
-#![feature(unsafe_destructor, core, std_misc)]
+#![feature(unsafe_destructor, core, std_misc, unique)]
 
 use std::mem;
-use std::ops::{Drop, FnOnce};
-use std::option::Option;
-use std::option::Option::{Some, None};
-use std::ptr::PtrExt;
 use std::ptr;
 use std::raw;
-use std::slice::AsSlice;
-use std::thunk::{Thunk};
+use std::ptr::Unique;
+use std::thunk::Invoke;
 
 /// The type representing a foreign chunk of memory
-pub struct CVec<'b, T> {
-    base: *mut T,
+pub struct CVec<T> {
+    base: Unique<T>,
     len: usize,
-    dtor: Option<Thunk<'b>>
+    dtor: Option<Box<Invoke<*mut T> + 'static>>
 }
 
 #[unsafe_destructor]
-impl<'b, T> Drop for CVec<'b T> {
+impl<T> Drop for CVec<T> {
     fn drop(&mut self) {
         match self.dtor.take() {
             None => (),
-            Some(f) => f.invoke(())
+            Some(f) => f.invoke(*self.base),
         }
     }
 }
 
-impl<'b, T> CVec<'b, T> {
+impl<T> CVec<T> {
     /// Create a `CVec` from a raw pointer to a buffer with a given length.
     ///
     /// Panics if the given pointer is null. The returned vector will not attempt
@@ -71,8 +67,8 @@ impl<'b, T> CVec<'b, T> {
     ///
     /// * base - A raw pointer to a buffer
     /// * len - The number of elements in the buffer
-    pub unsafe fn new(base: *mut T, len: usize) -> CVec<'b, T> {
-        assert!(base != ptr::null_mut());
+    pub unsafe fn new(base: Unique<T>, len: usize) -> CVec<T> {
+        assert!(*base != ptr::null_mut());
         CVec {
             base: base,
             len: len,
@@ -87,18 +83,19 @@ impl<'b, T> CVec<'b, T> {
     ///
     /// # Arguments
     ///
-    /// * base - A foreign pointer to a buffer
+    /// * base - A unique pointer to a buffer
     /// * len - The number of elements in the buffer
     /// * dtor - A fn to run when the value is destructed, useful
-    ///          for freeing the buffer, etc.
-    pub unsafe fn new_with_dtor<F>(base: *mut T,
+    ///          for freeing the buffer, etc. `base` will be passed
+    ///          to it as an argument.
+    pub unsafe fn new_with_dtor<F>(base: Unique<T>,
                                    len: usize,
                                    dtor: F)
-                                   -> CVec<'b, T>
-        where F : FnOnce(), F : Send, F : 'b
+                                   -> CVec<T>
+        where F : FnOnce(*mut T) + 'static
     {
-        assert!(base != ptr::null_mut());
-        let dtor: Thunk = Thunk::new(dtor);
+        assert!(*base != ptr::null_mut());
+        let dtor = Box::new(dtor);
         CVec {
             base: base,
             len: len,
@@ -109,7 +106,7 @@ impl<'b, T> CVec<'b, T> {
     /// View the stored data as a mutable slice.
     pub fn as_mut_slice<'a>(&'a mut self) -> &'a mut [T] {
         unsafe {
-            mem::transmute(raw::Slice { data: self.base as *const T, len: self.len })
+            mem::transmute(raw::Slice { data: *self.base as *const T, len: self.len })
         }
     }
 
@@ -145,12 +142,8 @@ impl<'b, T> CVec<'b, T> {
     /// value of `get(0)`.
     pub unsafe fn into_inner(mut self) -> *mut T {
         self.dtor = None;
-        self.base
+        *self.base
     }
-
-    /// Deprecated, use into_inner() instead
-    #[deprecated = "renamed to into_inner()"]
-    pub unsafe fn unwrap(self) -> *mut T { self.into_inner() }
 
     /// Returns the number of items in this vector.
     pub fn len(&self) -> usize { self.len }
@@ -159,11 +152,11 @@ impl<'b, T> CVec<'b, T> {
     pub fn is_empty(&self) -> bool { self.len() == 0 }
 }
 
-impl<'b, T> AsSlice<T> for CVec<'b, T> {
+impl<T> AsSlice<T> for CVec<T> {
     /// View the stored data as a slice.
     fn as_slice<'a>(&'a self) -> &'a [T] {
         unsafe {
-            mem::transmute(raw::Slice { data: self.base as *const T, len: self.len })
+            mem::transmute(raw::Slice { data: *self.base as *const T, len: self.len })
         }
     }
 }
@@ -174,16 +167,16 @@ mod tests {
     extern crate libc;
 
     use super::CVec;
-    use std::ptr;
+    use std::ptr::{self, Unique};
 
-    fn malloc(n: usize) -> CVec<'static, u8> {
+    fn malloc(n: usize) -> CVec<u8> {
         unsafe {
-            let mem = ptr::Unique::new(libc::malloc(n as libc::size_t));
+            let mem: Unique<u8> = Unique::new(
+                libc::malloc(n as libc::size_t) as *mut _);
             if (*mem).is_null() { alloc::oom() }
 
-            CVec::new_with_dtor(*mem as *mut u8,
-                                n,
-                                move|| { libc::free((*mem) as *mut libc::c_void); })
+            CVec::new_with_dtor(mem, n,
+                                |mem| { libc::free((mem) as *mut _); })
         }
     }
 
@@ -202,7 +195,7 @@ mod tests {
     #[should_fail]
     fn test_panic_at_null() {
         unsafe {
-            CVec::new(ptr::null_mut::<u8>(), 9);
+            CVec::new(Unique::new(ptr::null_mut::<u8>()), 9);
         }
     }
 
@@ -223,9 +216,9 @@ mod tests {
     #[test]
     fn test_unwrap() {
         unsafe {
-            let cv = CVec::new_with_dtor(1 as *mut isize,
+            let cv = CVec::new_with_dtor(Unique::new(1 as *mut isize),
                                          0,
-                                         move|| panic!("Don't run this destructor!"));
+                                         |_| panic!("Don't run this destructor!"));
             let p = cv.into_inner();
             assert_eq!(p, 1 as *mut isize);
         }
