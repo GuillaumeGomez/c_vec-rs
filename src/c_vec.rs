@@ -170,20 +170,20 @@ impl<'b, T> AsSlice<T> for CVec<'b, T> {
 
 #[cfg(test)]
 mod tests {
-    use prelude::v1::*;
+    extern crate alloc;
+    extern crate libc;
 
     use super::CVec;
-    use libc;
-    use ptr;
+    use std::ptr;
 
-    fn malloc(n: uint) -> CVec<u8> {
+    fn malloc(n: usize) -> CVec<'static, u8> {
         unsafe {
-            let mem = ptr::Unique(libc::malloc(n as libc::size_t));
-            if mem.0.is_null() { ::alloc::oom() }
+            let mem = ptr::Unique::new(libc::malloc(n as libc::size_t));
+            if (*mem).is_null() { alloc::oom() }
 
-            CVec::new_with_dtor(mem.0 as *mut u8,
+            CVec::new_with_dtor(*mem as *mut u8,
                                 n,
-                                move|| { libc::free(mem.0 as *mut libc::c_void); })
+                                move|| { libc::free((*mem) as *mut libc::c_void); })
         }
     }
 
@@ -223,11 +223,11 @@ mod tests {
     #[test]
     fn test_unwrap() {
         unsafe {
-            let cv = CVec::new_with_dtor(1 as *mut int,
+            let cv = CVec::new_with_dtor(1 as *mut isize,
                                          0,
                                          move|| panic!("Don't run this destructor!"));
             let p = cv.into_inner();
-            assert_eq!(p, 1 as *mut int);
+            assert_eq!(p, 1 as *mut isize);
         }
     }
 
