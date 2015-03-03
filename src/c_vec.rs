@@ -39,6 +39,7 @@ use std::ptr;
 use std::raw;
 use std::ptr::Unique;
 use std::thunk::Invoke;
+use std::ops::{Index, IndexMut};
 
 /// The type representing a foreign chunk of memory
 pub struct CVec<T> {
@@ -150,6 +151,14 @@ impl<T> CVec<T> {
 
     /// Returns whether this vector is empty.
     pub fn is_empty(&self) -> bool { self.len() == 0 }
+
+    /// Convert to CSlice
+    pub fn as_cslice(&self) -> CSlice<T> {
+        CSlice {
+            base: *self.base,
+            len: self.len
+        }
+    }
 }
 
 impl<T> AsSlice<T> for CVec<T> {
@@ -164,18 +173,7 @@ impl<T> AsSlice<T> for CVec<T> {
 /// The type representing an 'unsafe' foreign chunk of memory
 pub struct CSlice<T> {
     base: *mut T,
-    len: usize,
-    dtor: Option<Box<Invoke<*mut T> + 'static>>
-}
-
-#[unsafe_destructor]
-impl<T> Drop for CSlice<T> {
-    fn drop(&mut self) {
-        match self.dtor.take() {
-            None => (),
-            Some(f) => f.invoke(self.base),
-        }
-    }
+    len: usize
 }
 
 impl<T> CSlice<T> {
@@ -192,35 +190,7 @@ impl<T> CSlice<T> {
         assert!(base != ptr::null_mut());
         CSlice {
             base: base,
-            len: len,
-            dtor: None,
-        }
-    }
-
-    /// Create a `CSlice` from a foreign buffer, with a given length,
-    /// and a function to run upon destruction.
-    ///
-    /// Panics if the given pointer is null.
-    ///
-    /// # Arguments
-    ///
-    /// * base - A raw pointer to a buffer
-    /// * len - The number of elements in the buffer
-    /// * dtor - A fn to run when the value is destructed, useful
-    ///          for freeing the buffer, etc. `base` will be passed
-    ///          to it as an argument.
-    pub unsafe fn new_with_dtor<F>(base: *mut T,
-                                   len: usize,
-                                   dtor: F)
-                                   -> CSlice<T>
-        where F : FnOnce(*mut T) + 'static
-    {
-        assert!(base != ptr::null_mut());
-        let dtor = Box::new(dtor);
-        CSlice {
-            base: base,
-            len: len,
-            dtor: Some(dtor)
+            len: len
         }
     }
 
@@ -251,21 +221,6 @@ impl<T> CSlice<T> {
         }
     }
 
-    /// Unwrap the pointer without running the destructor
-    ///
-    /// This method retrieves the underlying pointer, and in the process
-    /// destroys the CSlice but without running the destructor. A use case
-    /// would be transferring ownership of the buffer to a C function, as
-    /// in this case you would not want to run the destructor.
-    ///
-    /// Note that if you want to access the underlying pointer without
-    /// cancelling the destructor, you can simply call `transmute` on the return
-    /// value of `get(0)`.
-    pub unsafe fn into_inner(mut self) -> *mut T {
-        self.dtor = None;
-        self.base
-    }
-
     /// Returns the number of items in this vector.
     pub fn len(&self) -> usize { self.len }
 
@@ -273,12 +228,19 @@ impl<T> CSlice<T> {
     pub fn is_empty(&self) -> bool { self.len() == 0 }
 }
 
-impl<T> AsSlice<T> for CSlice<T> {
-    /// View the stored data as a slice.
-    fn as_slice<'a>(&'a self) -> &'a [T] {
-        unsafe {
-            mem::transmute(raw::Slice { data: self.base as *const T, len: self.len })
-        }
+impl<T> Index<usize> for CSlice<T> {
+    type Output = T;
+
+    fn index<'a>(&'a self, _index: &usize) -> &'a T {
+        assert!(*_index < self.len);
+        unsafe { &*self.base.offset(*_index as isize) }
+    }
+}
+
+impl<T> IndexMut<usize> for CSlice<T> {
+    fn index_mut<'a>(&'a mut self, _index: &usize) -> &'a mut T {
+        assert!(*_index < self.len);
+        unsafe { &mut *self.base.offset(*_index as isize) }
     }
 }
 
@@ -308,8 +270,7 @@ mod tests {
             let mem: *mut u8 = libc::malloc(n as libc::size_t) as *mut _;
             if mem.is_null() { alloc::oom() }
 
-            CSlice::new_with_dtor(mem, n,
-                                |mem| { libc::free((mem) as *mut _); })
+            CSlice::new(mem, n)
         }
     }
 
@@ -328,10 +289,10 @@ mod tests {
     fn slice_test_basic() {
         let mut cs = s_malloc(16);
 
-        *cs.get_mut(3).unwrap() = 8;
-        *cs.get_mut(4).unwrap() = 9;
-        assert_eq!(*cs.get(3).unwrap(), 8);
-        assert_eq!(*cs.get(4).unwrap(), 9);
+        cs[3] = 8;
+        cs[4] = 9;
+        assert_eq!(cs[3], 8);
+        assert_eq!(cs[4], 9);
         assert_eq!(cs.len(), 16);
     }
 
@@ -359,10 +320,11 @@ mod tests {
     }
 
     #[test]
+    #[should_fail]
     fn slice_test_overrun_get() {
         let cs = s_malloc(16);
 
-        assert!(cs.get(17).is_none());
+        assert!(cs[17] == 18);
     }
 
     #[test]
@@ -370,13 +332,6 @@ mod tests {
         let mut cv = v_malloc(16);
 
         assert!(cv.get_mut(17).is_none());
-    }
-
-    #[test]
-    fn slice_test_overrun_set() {
-        let mut cs = s_malloc(16);
-
-        assert!(cs.get_mut(17).is_none());
     }
 
     #[test]
@@ -391,13 +346,27 @@ mod tests {
     }
 
     #[test]
-    fn slice_test_unwrap() {
+    fn vec_to_slice_test() {
         unsafe {
-            let cs = CSlice::new_with_dtor(1 as *mut isize,
-                                         0,
-                                         |_| panic!("Don't run this destructor!"));
-            let ps = cs.into_inner();
-            assert_eq!(ps, 1 as *mut isize);
+            let mut cv = v_malloc(2);
+
+            *cv.get_mut(0).unwrap() = 10;
+            *cv.get_mut(1).unwrap() = 12;
+            let cs = cv.as_cslice();
+
+            assert_eq!(cs[0], 10);
+            assert_eq!(cs[1], 12);
         }
+    }
+
+    #[test]
+    fn slice_to_vec_test() {
+        let cv = v_malloc(2);
+        let mut cs = cv.as_cslice();
+
+        cs[0] = 13;
+        cs[1] = 26;
+        assert_eq!(*cv.get(0).unwrap(), 13);
+        assert_eq!(*cv.get(1).unwrap(), 26);
     }
 }
