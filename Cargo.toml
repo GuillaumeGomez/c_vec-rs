@@ -3,10 +3,10 @@ name = "c_vec"
 version = "1.0.7"
 authors = ["Guillaume Gomez <guillaume1.gomez@gmail.com>"]
 
-description = "The old c_vec struct"
+description = "Structures to wrap C arrays"
 repository = "https://github.com/GuillaumeGomez/c_vec-rs.git"
 readme = "README.md"
-keywords = ["c", "vec", "c_vec"]
+keywords = ["c", "vec", "c_vec", "array"]
 license = "Apache-2.0/MIT"
 
 [lib]
