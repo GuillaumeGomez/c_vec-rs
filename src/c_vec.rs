@@ -65,7 +65,7 @@ impl<T> CVec<T> {
     ///
     /// # Arguments
     ///
-    /// * base - A raw pointer to a buffer
+    /// * base - A unique pointer to a buffer
     /// * len - The number of elements in the buffer
     pub unsafe fn new(base: Unique<T>, len: usize) -> CVec<T> {
         assert!(*base != ptr::null_mut());
@@ -163,23 +163,23 @@ impl<T> AsSlice<T> for CVec<T> {
 
 /// The type representing an 'unsafe' foreign chunk of memory
 pub struct CSlice<T> {
-    base: T,
+    base: *mut T,
     len: usize,
     dtor: Option<Box<Invoke<*mut T> + 'static>>
 }
 
 #[unsafe_destructor]
-impl<T> Drop for CVec<T> {
+impl<T> Drop for CSlice<T> {
     fn drop(&mut self) {
         match self.dtor.take() {
             None => (),
-            Some(f) => f.invoke(*self.base),
+            Some(f) => f.invoke(self.base),
         }
     }
 }
 
-impl<T> CVec<T> {
-    /// Create a `CVec` from a raw pointer to a buffer with a given length.
+impl<T> CSlice<T> {
+    /// Create a `CSlice` from a raw pointer to a buffer with a given length.
     ///
     /// Panics if the given pointer is null. The returned vector will not attempt
     /// to deallocate the vector when dropped.
@@ -188,36 +188,36 @@ impl<T> CVec<T> {
     ///
     /// * base - A raw pointer to a buffer
     /// * len - The number of elements in the buffer
-    pub unsafe fn new(base: Unique<T>, len: usize) -> CVec<T> {
-        assert!(*base != ptr::null_mut());
-        CVec {
+    pub unsafe fn new(base: *mut T, len: usize) -> CSlice<T> {
+        assert!(base != ptr::null_mut());
+        CSlice {
             base: base,
             len: len,
             dtor: None,
         }
     }
 
-    /// Create a `CVec` from a foreign buffer, with a given length,
+    /// Create a `CSlice` from a foreign buffer, with a given length,
     /// and a function to run upon destruction.
     ///
     /// Panics if the given pointer is null.
     ///
     /// # Arguments
     ///
-    /// * base - A unique pointer to a buffer
+    /// * base - A raw pointer to a buffer
     /// * len - The number of elements in the buffer
     /// * dtor - A fn to run when the value is destructed, useful
     ///          for freeing the buffer, etc. `base` will be passed
     ///          to it as an argument.
-    pub unsafe fn new_with_dtor<F>(base: Unique<T>,
+    pub unsafe fn new_with_dtor<F>(base: *mut T,
                                    len: usize,
                                    dtor: F)
-                                   -> CVec<T>
+                                   -> CSlice<T>
         where F : FnOnce(*mut T) + 'static
     {
-        assert!(*base != ptr::null_mut());
+        assert!(base != ptr::null_mut());
         let dtor = Box::new(dtor);
-        CVec {
+        CSlice {
             base: base,
             len: len,
             dtor: Some(dtor)
@@ -227,7 +227,7 @@ impl<T> CVec<T> {
     /// View the stored data as a mutable slice.
     pub fn as_mut_slice<'a>(&'a mut self) -> &'a mut [T] {
         unsafe {
-            mem::transmute(raw::Slice { data: *self.base as *const T, len: self.len })
+            mem::transmute(raw::Slice { data: self.base as *const T, len: self.len })
         }
     }
 
@@ -254,7 +254,7 @@ impl<T> CVec<T> {
     /// Unwrap the pointer without running the destructor
     ///
     /// This method retrieves the underlying pointer, and in the process
-    /// destroys the CVec but without running the destructor. A use case
+    /// destroys the CSlice but without running the destructor. A use case
     /// would be transferring ownership of the buffer to a C function, as
     /// in this case you would not want to run the destructor.
     ///
@@ -263,7 +263,7 @@ impl<T> CVec<T> {
     /// value of `get(0)`.
     pub unsafe fn into_inner(mut self) -> *mut T {
         self.dtor = None;
-        *self.base
+        self.base
     }
 
     /// Returns the number of items in this vector.
@@ -273,15 +273,25 @@ impl<T> CVec<T> {
     pub fn is_empty(&self) -> bool { self.len() == 0 }
 }
 
+impl<T> AsSlice<T> for CSlice<T> {
+    /// View the stored data as a slice.
+    fn as_slice<'a>(&'a self) -> &'a [T] {
+        unsafe {
+            mem::transmute(raw::Slice { data: self.base as *const T, len: self.len })
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate alloc;
     extern crate libc;
 
-    use super::CVec;
+    use super::{CVec, CSlice};
     use std::ptr::{self, Unique};
 
-    fn malloc(n: usize) -> CVec<u8> {
+    // allocation of CVec
+    fn v_malloc(n: usize) -> CVec<u8> {
         unsafe {
             let mem: Unique<u8> = Unique::new(
                 libc::malloc(n as libc::size_t) as *mut _);
@@ -292,9 +302,20 @@ mod tests {
         }
     }
 
+    // allocation of CSlice
+    fn s_malloc(n: usize) -> CSlice<u8> {
+        unsafe {
+            let mem: *mut u8 = libc::malloc(n as libc::size_t) as *mut _;
+            if mem.is_null() { alloc::oom() }
+
+            CSlice::new_with_dtor(mem, n,
+                                |mem| { libc::free((mem) as *mut _); })
+        }
+    }
+
     #[test]
-    fn test_basic() {
-        let mut cv = malloc(16);
+    fn vec_test_basic() {
+        let mut cv = v_malloc(16);
 
         *cv.get_mut(3).unwrap() = 8;
         *cv.get_mut(4).unwrap() = 9;
@@ -304,29 +325,62 @@ mod tests {
     }
 
     #[test]
+    fn slice_test_basic() {
+        let mut cs = s_malloc(16);
+
+        *cs.get_mut(3).unwrap() = 8;
+        *cs.get_mut(4).unwrap() = 9;
+        assert_eq!(*cs.get(3).unwrap(), 8);
+        assert_eq!(*cs.get(4).unwrap(), 9);
+        assert_eq!(cs.len(), 16);
+    }
+
+    #[test]
     #[should_fail]
-    fn test_panic_at_null() {
+    fn vec_test_panic_at_null() {
         unsafe {
             CVec::new(Unique::new(ptr::null_mut::<u8>()), 9);
         }
     }
 
     #[test]
-    fn test_overrun_get() {
-        let cv = malloc(16);
+    #[should_fail]
+    fn slice_test_panic_at_null() {
+        unsafe {
+            CSlice::new(ptr::null_mut::<u8>(), 9);
+        }
+    }
+
+    #[test]
+    fn vec_test_overrun_get() {
+        let cv = v_malloc(16);
 
         assert!(cv.get(17).is_none());
     }
 
     #[test]
-    fn test_overrun_set() {
-        let mut cv = malloc(16);
+    fn slice_test_overrun_get() {
+        let cs = s_malloc(16);
+
+        assert!(cs.get(17).is_none());
+    }
+
+    #[test]
+    fn vec_test_overrun_set() {
+        let mut cv = v_malloc(16);
 
         assert!(cv.get_mut(17).is_none());
     }
 
     #[test]
-    fn test_unwrap() {
+    fn slice_test_overrun_set() {
+        let mut cs = s_malloc(16);
+
+        assert!(cs.get_mut(17).is_none());
+    }
+
+    #[test]
+    fn vec_test_unwrap() {
         unsafe {
             let cv = CVec::new_with_dtor(Unique::new(1 as *mut isize),
                                          0,
@@ -336,4 +390,14 @@ mod tests {
         }
     }
 
+    #[test]
+    fn slice_test_unwrap() {
+        unsafe {
+            let cs = CSlice::new_with_dtor(1 as *mut isize,
+                                         0,
+                                         |_| panic!("Don't run this destructor!"));
+            let ps = cs.into_inner();
+            assert_eq!(ps, 1 as *mut isize);
+        }
+    }
 }
