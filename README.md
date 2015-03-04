@@ -8,9 +8,10 @@ extern crate libc;
 extern crate c_vec;
 
 use c_vec::CVec;
+use std::ptr::Unique;
 
 fn some_func(cvec: *mut libc::c_int, len: uint) {
-    let v = CVec::new(cvec, len);
+    let v = CVec::new(Unique::new(cvec), len);
 
     println!("converted from c array: {}", v.as_slice());
 }
