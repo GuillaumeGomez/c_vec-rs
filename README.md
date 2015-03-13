@@ -1,7 +1,7 @@
 c_vec [![Build Status](https://api.travis-ci.org/GuillaumeGomez/c_vec-rs.png?branch=master)](https://travis-ci.org/GuillaumeGomez/c_vec-rs)
 =====
 
-Old rust c_vec struct. It works just like the old one:
+Structures to wrap C arrays. Here's a little example:
 
 ```Rust
 extern crate libc;
@@ -11,9 +11,13 @@ use c_vec::CVec;
 use std::ptr::Unique;
 
 fn some_func(cvec: *mut libc::c_int, len: uint) {
+    // safe wrapper, you can pass a destructor with new_with_dtor() method
     let v = CVec::new(Unique::new(cvec), len);
+    // unsafe wrapper with no destructor
+    let s = CSlice::new(cvec, len);
 
-    println!("converted from c array: {}", v.as_slice());
+    println!("cvec:   converted from c array: {}", v.as_slice());
+    println!("cslice: converted from c array: {}", s.as_mut_slice());
 }
 ```
 
