@@ -7,7 +7,7 @@ Structures to wrap C arrays. Here's a little example:
 extern crate libc;
 extern crate c_vec;
 
-use c_vec::CVec;
+use c_vec::{CVec, CSlice};
 use std::ptr::Unique;
 
 fn some_func(cvec: *mut libc::c_int, len: uint) {
