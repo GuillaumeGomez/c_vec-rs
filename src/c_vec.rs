@@ -228,6 +228,15 @@ impl<T> CSlice<T> {
     pub fn is_empty(&self) -> bool { self.len() == 0 }
 }
 
+impl<T> AsSlice<T> for CSlice<T> {
+    /// View the stored data as a slice.
+    fn as_slice<'a>(&'a self) -> &'a [T] {
+        unsafe {
+            mem::transmute(raw::Slice { data: self.base as *const T, len: self.len })
+        }
+    }
+}
+
 impl<T> Index<usize> for CSlice<T> {
     type Output = T;
 
