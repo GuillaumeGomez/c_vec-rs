@@ -33,6 +33,7 @@
 //! if necessary.
 
 #![feature(unsafe_destructor, std_misc, unique, convert)]
+#![cfg_attr(test, feature(alloc))]
 
 use std::ptr;
 use std::slice;
@@ -309,7 +310,7 @@ mod tests {
     }
 
     #[test]
-    #[should_fail]
+    #[should_panic]
     fn vec_test_panic_at_null() {
         unsafe {
             CVec::new(Unique::new(ptr::null_mut::<u8>()), 9);
@@ -317,7 +318,7 @@ mod tests {
     }
 
     #[test]
-    #[should_fail]
+    #[should_panic]
     fn slice_test_panic_at_null() {
         unsafe {
             CSlice::new(ptr::null_mut::<u8>(), 9);
@@ -332,7 +333,7 @@ mod tests {
     }
 
     #[test]
-    #[should_fail]
+    #[should_panic]
     fn slice_test_overrun_get() {
         let cs = s_malloc(16);
 
@@ -359,16 +360,14 @@ mod tests {
 
     #[test]
     fn vec_to_slice_test() {
-        unsafe {
-            let mut cv = v_malloc(2);
+        let mut cv = v_malloc(2);
 
-            *cv.get_mut(0).unwrap() = 10;
-            *cv.get_mut(1).unwrap() = 12;
-            let cs = cv.as_cslice();
+        *cv.get_mut(0).unwrap() = 10;
+        *cv.get_mut(1).unwrap() = 12;
+        let cs = cv.as_cslice();
 
-            assert_eq!(cs[0], 10);
-            assert_eq!(cs[1], 12);
-        }
+        assert_eq!(cs[0], 10);
+        assert_eq!(cs[1], 12);
     }
 
     #[test]
