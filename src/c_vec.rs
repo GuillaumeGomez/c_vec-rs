@@ -32,11 +32,10 @@
 //! handled correctly, i.e. that allocated memory is eventually freed
 //! if necessary.
 
-#![feature(unsafe_destructor, core, std_misc, unique)]
+#![feature(unsafe_destructor, std_misc, unique, convert)]
 
-use std::mem;
 use std::ptr;
-use std::raw;
+use std::slice;
 use std::ptr::Unique;
 use std::thunk::Invoke;
 use std::ops::{Index, IndexMut};
@@ -104,13 +103,6 @@ impl<T> CVec<T> {
         }
     }
 
-    /// View the stored data as a mutable slice.
-    pub fn as_mut_slice<'a>(&'a mut self) -> &'a mut [T] {
-        unsafe {
-            mem::transmute(raw::Slice { data: *self.base as *const T, len: self.len })
-        }
-    }
-
     /// Retrieves an element at a given index, returning `None` if the requested
     /// index is greater than the length of the vector.
     pub fn get<'a>(&'a self, ofs: usize) -> Option<&'a T> {
@@ -161,11 +153,20 @@ impl<T> CVec<T> {
     }
 }
 
-impl<T> AsSlice<T> for CVec<T> {
+impl<T> AsRef<[T]> for CVec<T> {
     /// View the stored data as a slice.
-    fn as_slice<'a>(&'a self) -> &'a [T] {
+    fn as_ref(&self) -> &[T] {
         unsafe {
-            mem::transmute(raw::Slice { data: *self.base as *const T, len: self.len })
+            slice::from_raw_parts(*self.base as *const T, self.len)
+        }
+    }
+}
+
+impl<T> AsMut<[T]> for CVec<T> {
+    /// View the stored data as a slice.
+    fn as_mut(&mut self) -> &mut [T] {
+        unsafe {
+            slice::from_raw_parts_mut(*self.base, self.len)
         }
     }
 }
@@ -191,13 +192,6 @@ impl<T> CSlice<T> {
         CSlice {
             base: base,
             len: len
-        }
-    }
-
-    /// View the stored data as a mutable slice.
-    pub fn as_mut_slice<'a>(&'a mut self) -> &'a mut [T] {
-        unsafe {
-            mem::transmute(raw::Slice { data: self.base as *const T, len: self.len })
         }
     }
 
@@ -228,11 +222,20 @@ impl<T> CSlice<T> {
     pub fn is_empty(&self) -> bool { self.len() == 0 }
 }
 
-impl<T> AsSlice<T> for CSlice<T> {
+impl<T> AsRef<[T]> for CSlice<T> {
     /// View the stored data as a slice.
-    fn as_slice<'a>(&'a self) -> &'a [T] {
+    fn as_ref(&self) -> &[T] {
         unsafe {
-            mem::transmute(raw::Slice { data: self.base as *const T, len: self.len })
+            slice::from_raw_parts(self.base as *const T, self.len)
+        }
+    }
+}
+
+impl<T> AsMut<[T]> for CSlice<T> {
+    /// View the stored data as a slice.
+    fn as_mut(&mut self) -> &mut [T] {
+        unsafe {
+            slice::from_raw_parts_mut(self.base, self.len)
         }
     }
 }
