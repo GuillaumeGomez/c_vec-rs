@@ -240,16 +240,16 @@ impl<T> AsSlice<T> for CSlice<T> {
 impl<T> Index<usize> for CSlice<T> {
     type Output = T;
 
-    fn index<'a>(&'a self, _index: &usize) -> &'a T {
-        assert!(*_index < self.len);
-        unsafe { &*self.base.offset(*_index as isize) }
+    fn index<'a>(&'a self, _index: usize) -> &'a T {
+        assert!(_index < self.len);
+        unsafe { &*self.base.offset(_index as isize) }
     }
 }
 
 impl<T> IndexMut<usize> for CSlice<T> {
-    fn index_mut<'a>(&'a mut self, _index: &usize) -> &'a mut T {
-        assert!(*_index < self.len);
-        unsafe { &mut *self.base.offset(*_index as isize) }
+    fn index_mut<'a>(&'a mut self, _index: usize) -> &'a mut T {
+        assert!(_index < self.len);
+        unsafe { &mut *self.base.offset(_index as isize) }
     }
 }
 
