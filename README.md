@@ -31,7 +31,7 @@ You can use it directly by adding this line to your `Cargo.toml` file:
 c_vec = "^1.0.0"
 ```
 
-Here's is the [crates.io](https://crates.io/crates/c_vec) page for `c_vec`.
+Here's the [crates.io](https://crates.io/crates/c_vec) page for `c_vec`.
 
 License
 =======
