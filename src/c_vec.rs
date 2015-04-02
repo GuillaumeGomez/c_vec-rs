@@ -32,20 +32,20 @@
 //! handled correctly, i.e. that allocated memory is eventually freed
 //! if necessary.
 
-#![feature(unsafe_destructor, std_misc, unique, convert)]
+#![feature(unsafe_destructor, unique, core)]
 #![cfg_attr(test, feature(alloc))]
 
+use std::boxed::FnBox;
 use std::ptr;
 use std::slice;
 use std::ptr::Unique;
-use std::thunk::Invoke;
 use std::ops::{Index, IndexMut};
 
 /// The type representing a foreign chunk of memory
 pub struct CVec<T> {
     base: Unique<T>,
     len: usize,
-    dtor: Option<Box<Invoke<*mut T> + 'static>>
+    dtor: Option<Box<FnBox(*mut T)>>
 }
 
 #[unsafe_destructor]
@@ -53,7 +53,7 @@ impl<T> Drop for CVec<T> {
     fn drop(&mut self) {
         match self.dtor.take() {
             None => (),
-            Some(f) => f.invoke(*self.base),
+            Some(f) => f(*self.base),
         }
     }
 }
@@ -93,7 +93,7 @@ impl<T> CVec<T> {
                                    len: usize,
                                    dtor: F)
                                    -> CVec<T>
-        where F : FnOnce(*mut T) + 'static
+        where F: FnBox(*mut T) + 'static
     {
         assert!(*base != ptr::null_mut());
         let dtor = Box::new(dtor);
