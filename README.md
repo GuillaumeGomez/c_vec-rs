@@ -16,8 +16,8 @@ fn some_func(cvec: *mut libc::c_int, len: uint) {
     // unsafe wrapper with no destructor
     let s = CSlice::new(cvec, len);
 
-    println!("cvec:   converted from c array: {}", v.as_slice());
-    println!("cslice: converted from c array: {}", s.as_mut_slice());
+    println!("cvec:   converted from c array: {}", v.as_ref());
+    println!("cslice: converted from c array: {}", s.as_mut());
 }
 ```
 
