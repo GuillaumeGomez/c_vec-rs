@@ -32,28 +32,21 @@
 //! handled correctly, i.e. that allocated memory is eventually freed
 //! if necessary.
 
-#![feature(unsafe_destructor, unique, core)]
-#![cfg_attr(test, feature(alloc))]
-
-use std::boxed::FnBox;
 use std::ptr;
 use std::slice;
-use std::ptr::Unique;
 use std::ops::{Index, IndexMut};
 
 /// The type representing a foreign chunk of memory
 pub struct CVec<T> {
-    base: Unique<T>,
+    base: *mut T,
     len: usize,
-    dtor: Option<Box<FnBox(*mut T)>>
+    dtor: Option<Box<FnMut(*mut T)>>
 }
 
-#[unsafe_destructor]
 impl<T> Drop for CVec<T> {
     fn drop(&mut self) {
-        match self.dtor.take() {
-            None => (),
-            Some(f) => f(*self.base),
+        if let Some(mut f) = self.dtor.take() {
+            f(self.base);
         }
     }
 }
@@ -68,8 +61,8 @@ impl<T> CVec<T> {
     ///
     /// * base - A unique pointer to a buffer
     /// * len - The number of elements in the buffer
-    pub unsafe fn new(base: Unique<T>, len: usize) -> CVec<T> {
-        assert!(*base != ptr::null_mut());
+    pub unsafe fn new(base: *mut T, len: usize) -> CVec<T> {
+        assert!(base != ptr::null_mut());
         CVec {
             base: base,
             len: len,
@@ -89,13 +82,13 @@ impl<T> CVec<T> {
     /// * dtor - A fn to run when the value is destructed, useful
     ///          for freeing the buffer, etc. `base` will be passed
     ///          to it as an argument.
-    pub unsafe fn new_with_dtor<F>(base: Unique<T>,
+    pub unsafe fn new_with_dtor<F>(base: *mut T,
                                    len: usize,
                                    dtor: F)
                                    -> CVec<T>
-        where F: FnBox(*mut T) + 'static
+        where F: FnMut(*mut T) + 'static
     {
-        assert!(*base != ptr::null_mut());
+        assert!(base != ptr::null_mut());
         let dtor = Box::new(dtor);
         CVec {
             base: base,
@@ -136,7 +129,7 @@ impl<T> CVec<T> {
     /// value of `get(0)`.
     pub unsafe fn into_inner(mut self) -> *mut T {
         self.dtor = None;
-        *self.base
+        self.base
     }
 
     /// Returns the number of items in this vector.
@@ -148,7 +141,7 @@ impl<T> CVec<T> {
     /// Convert to CSlice
     pub fn as_cslice(&self) -> CSlice<T> {
         CSlice {
-            base: *self.base,
+            base: self.base,
             len: self.len
         }
     }
@@ -158,7 +151,7 @@ impl<T> AsRef<[T]> for CVec<T> {
     /// View the stored data as a slice.
     fn as_ref(&self) -> &[T] {
         unsafe {
-            slice::from_raw_parts(*self.base as *const T, self.len)
+            slice::from_raw_parts(self.base as *const T, self.len)
         }
     }
 }
@@ -167,7 +160,7 @@ impl<T> AsMut<[T]> for CVec<T> {
     /// View the stored data as a slice.
     fn as_mut(&mut self) -> &mut [T] {
         unsafe {
-            slice::from_raw_parts_mut(*self.base, self.len)
+            slice::from_raw_parts_mut(self.base, self.len)
         }
     }
 }
@@ -259,21 +252,16 @@ impl<T> IndexMut<usize> for CSlice<T> {
 
 #[cfg(test)]
 mod tests {
-    extern crate alloc;
     extern crate libc;
 
     use super::{CVec, CSlice};
-    use std::ptr::{self, Unique};
+    use std::ptr;
 
     // allocation of CVec
     fn v_malloc(n: usize) -> CVec<u8> {
         unsafe {
-            let mem: Unique<u8> = Unique::new(
-                libc::malloc(n as libc::size_t) as *mut _);
-            if (*mem).is_null() { alloc::oom() }
-
-            CVec::new_with_dtor(mem, n,
-                                |mem| { libc::free((mem) as *mut _); })
+            let mem = libc::malloc(n as libc::size_t) as *mut u8;
+            CVec::new_with_dtor(mem, n, |mem| { libc::free((mem) as *mut _); })
         }
     }
 
@@ -281,8 +269,6 @@ mod tests {
     fn s_malloc(n: usize) -> CSlice<u8> {
         unsafe {
             let mem: *mut u8 = libc::malloc(n as libc::size_t) as *mut _;
-            if mem.is_null() { alloc::oom() }
-
             CSlice::new(mem, n)
         }
     }
@@ -313,7 +299,7 @@ mod tests {
     #[should_panic]
     fn vec_test_panic_at_null() {
         unsafe {
-            CVec::new(Unique::new(ptr::null_mut::<u8>()), 9);
+            CVec::new(ptr::null_mut::<u8>(), 9);
         }
     }
 
@@ -350,7 +336,7 @@ mod tests {
     #[test]
     fn vec_test_unwrap() {
         unsafe {
-            let cv = CVec::new_with_dtor(Unique::new(1 as *mut isize),
+            let cv = CVec::new_with_dtor(1 as *mut isize,
                                          0,
                                          |_| panic!("Don't run this destructor!"));
             let p = cv.into_inner();
