@@ -13,4 +13,4 @@ license = "Apache-2.0/MIT"
 name = "c_vec"
 
 [dev-dependencies]
-libc = "0.1"
+libc = "0.2"
