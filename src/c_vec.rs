@@ -250,6 +250,20 @@ impl<T> IndexMut<usize> for CSlice<T> {
     }
 }
 
+impl<T: Clone> Into<Vec<T>> for CSlice<T> {
+    fn into(self: CSlice<T>) -> Vec<T> {
+        let mut v = Vec::with_capacity(self.len);
+        v.extend_from_slice(self.as_ref());
+        v
+    }
+}
+
+impl<T: Clone> Into<Vec<T>> for CVec<T> {
+    fn into(self: CVec<T>) -> Vec<T> {
+        self.as_cslice().into()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate libc;
@@ -365,5 +379,19 @@ mod tests {
         cs[1] = 26;
         assert_eq!(*cv.get(0).unwrap(), 13);
         assert_eq!(*cv.get(1).unwrap(), 26);
+    }
+
+    #[test]
+    fn convert_test() {
+        let cv = v_malloc(2);
+        let mut cs = cv.as_cslice();
+        cs[0] = 1;
+        cs[1] = 99;
+        let v: Vec<_> = cs.into();
+        assert_eq!(1, v[0]);
+        assert_eq!(99, v[1]);
+        let v: Vec<_> = cv.into();
+        assert_eq!(1, v[0]);
+        assert_eq!(99, v[1]);
     }
 }
