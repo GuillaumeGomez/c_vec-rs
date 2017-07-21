@@ -139,7 +139,7 @@ impl<T> CVec<T> {
     pub fn is_empty(&self) -> bool { self.len() == 0 }
 
     /// Convert to CSlice
-    pub fn as_cslice(&self) -> CSlice<T> {
+    pub unsafe fn as_cslice(&self) -> CSlice<T> {
         CSlice {
             base: self.base,
             len: self.len
@@ -260,7 +260,9 @@ impl<T: Clone> Into<Vec<T>> for CSlice<T> {
 
 impl<T: Clone> Into<Vec<T>> for CVec<T> {
     fn into(self: CVec<T>) -> Vec<T> {
-        self.as_cslice().into()
+        unsafe {
+            self.as_cslice().into()
+        }
     }
 }
 
@@ -364,32 +366,38 @@ mod tests {
 
         *cv.get_mut(0).unwrap() = 10;
         *cv.get_mut(1).unwrap() = 12;
-        let cs = cv.as_cslice();
+        unsafe {
+            let cs = cv.as_cslice();
 
-        assert_eq!(cs[0], 10);
-        assert_eq!(cs[1], 12);
+            assert_eq!(cs[0], 10);
+            assert_eq!(cs[1], 12);
+        }
     }
 
     #[test]
     fn slice_to_vec_test() {
         let cv = v_malloc(2);
-        let mut cs = cv.as_cslice();
+        unsafe {
+            let mut cs = cv.as_cslice();
 
-        cs[0] = 13;
-        cs[1] = 26;
-        assert_eq!(*cv.get(0).unwrap(), 13);
-        assert_eq!(*cv.get(1).unwrap(), 26);
+            cs[0] = 13;
+            cs[1] = 26;
+            assert_eq!(*cv.get(0).unwrap(), 13);
+            assert_eq!(*cv.get(1).unwrap(), 26);
+        }
     }
 
     #[test]
     fn convert_test() {
         let cv = v_malloc(2);
-        let mut cs = cv.as_cslice();
-        cs[0] = 1;
-        cs[1] = 99;
-        let v: Vec<_> = cs.into();
-        assert_eq!(1, v[0]);
-        assert_eq!(99, v[1]);
+        unsafe {
+            let mut cs = cv.as_cslice();
+            cs[0] = 1;
+            cs[1] = 99;
+            let v: Vec<_> = cs.into();
+            assert_eq!(1, v[0]);
+            assert_eq!(99, v[1]);
+        }
         let v: Vec<_> = cv.into();
         assert_eq!(1, v[0]);
         assert_eq!(99, v[1]);
