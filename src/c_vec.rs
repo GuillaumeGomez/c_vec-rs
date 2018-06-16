@@ -36,7 +36,27 @@ use std::ptr;
 use std::slice;
 use std::ops::{Index, IndexMut};
 
-/// The type representing a foreign chunk of memory
+/// Iterator over `CVec`.
+///
+/// You can get it from the `CVec::iter` method.
+pub struct CVecIter<'a, T: 'a> {
+    inner: &'a CVec<T>,
+    pos: usize,
+}
+
+impl<'a, T> Iterator for CVecIter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let ret = self.inner.get(self.pos);
+        if ret.is_some() {
+            self.pos += 1;
+        }
+        ret
+    }
+}
+
+/// The type representing a foreign chunk of memory.
 pub struct CVec<T> {
     base: *mut T,
     len: usize,
@@ -138,11 +158,19 @@ impl<T> CVec<T> {
     /// Returns whether this vector is empty.
     pub fn is_empty(&self) -> bool { self.len() == 0 }
 
-    /// Convert to CSlice
+    /// Converts to CSlice.
     pub unsafe fn as_cslice(&self) -> CSlice<T> {
         CSlice {
             base: self.base,
             len: self.len
+        }
+    }
+
+    /// Returns an iterator over CVec.
+    pub fn iter<'a>(&'a self) -> CVecIter<'a, T> {
+        CVecIter {
+            inner: self,
+            pos: 0,
         }
     }
 }
@@ -161,6 +189,27 @@ impl<T> AsMut<[T]> for CVec<T> {
     fn as_mut(&mut self) -> &mut [T] {
         unsafe {
             slice::from_raw_parts_mut(self.base, self.len)
+        }
+    }
+}
+
+/// Iterator over `CSlice`.
+///
+/// You can get it from the `CSlice::iter` method.
+pub struct CSliceIter<'a, T: 'a> {
+    inner: &'a CSlice<T>,
+    pos: usize,
+}
+
+impl<'a, T> Iterator for CSliceIter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pos >= self.inner.len() {
+            None
+        } else {
+            self.pos += 1;
+            Some(&self.inner[self.pos - 1])
         }
     }
 }
@@ -210,10 +259,22 @@ impl<T> CSlice<T> {
     }
 
     /// Returns the number of items in this vector.
-    pub fn len(&self) -> usize { self.len }
+    pub fn len(&self) -> usize {
+        self.len
+    }
 
     /// Returns whether this vector is empty.
-    pub fn is_empty(&self) -> bool { self.len() == 0 }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Returns an iterator over CVec.
+    pub fn iter<'a>(&'a self) -> CSliceIter<'a, T> {
+        CSliceIter {
+            inner: self,
+            pos: 0,
+        }
+    }
 }
 
 impl<T> AsRef<[T]> for CSlice<T> {
@@ -401,5 +462,37 @@ mod tests {
         let v: Vec<_> = cv.into();
         assert_eq!(1, v[0]);
         assert_eq!(99, v[1]);
+    }
+
+    #[test]
+    fn iter_cvec() {
+        let cv = v_malloc(2);
+
+        unsafe {
+            let mut cs = cv.as_cslice();
+
+            cs[0] = 13;
+            cs[1] = 26;
+        }
+
+        let mut iter = cv.iter();
+        assert_eq!(iter.next(), Some(&13));
+        assert_eq!(iter.next(), Some(&26));
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn iter_cslice() {
+        let mut cs = s_malloc(2);
+
+        cs[0] = 13;
+        cs[1] = 26;
+
+        let mut iter = cs.iter();
+        assert_eq!(iter.next(), Some(&13));
+        assert_eq!(iter.next(), Some(&26));
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next(), None);
     }
 }
