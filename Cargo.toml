@@ -1,6 +1,6 @@
 [package]
 name = "c_vec"
-version = "1.3.1"
+version = "1.3.2"
 authors = ["Guillaume Gomez <guillaume1.gomez@gmail.com>"]
 
 description = "Structures to wrap C arrays"
@@ -8,6 +8,9 @@ repository = "https://github.com/GuillaumeGomez/c_vec-rs.git"
 readme = "README.md"
 keywords = ["c", "vec", "c_vec", "array"]
 license = "Apache-2.0/MIT"
+
+[badges]
+travis-ci = { repository = "GuillaumeGomez/c_vec-rs" }
 
 [lib]
 name = "c_vec"
