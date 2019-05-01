@@ -1,6 +1,6 @@
 [package]
 name = "c_vec"
-version = "1.3.2"
+version = "1.3.3"
 authors = ["Guillaume Gomez <guillaume1.gomez@gmail.com>"]
 
 description = "Structures to wrap C arrays"
@@ -17,3 +17,4 @@ name = "c_vec"
 
 [dev-dependencies]
 libc = "0.2"
+doc-comment = "0.3"

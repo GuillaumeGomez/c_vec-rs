@@ -32,6 +32,13 @@
 //! handled correctly, i.e. that allocated memory is eventually freed
 //! if necessary.
 
+#[cfg(test)]
+#[macro_use]
+extern crate doc_comment;
+
+#[cfg(test)]
+doctest!("../README.md");
+
 use std::ptr;
 use std::slice;
 use std::ops::{Index, IndexMut};
