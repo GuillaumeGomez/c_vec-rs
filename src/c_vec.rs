@@ -16,6 +16,17 @@ use crate::{CSlice, CSliceMut};
 /// Iterator over [`CVec`].
 ///
 /// You can get it from the [`CVec::iter`] method.
+///
+/// # Example
+///
+/// ```
+/// use c_vec::CVec;
+///
+/// let slice = &mut [0, 1, 2];
+/// let ptr = slice.as_mut_ptr();
+/// let cvec = unsafe { CVec::new(ptr, slice.len()) };
+/// let iter = cvec.iter();
+/// ```
 pub struct CVecIter<'a, T: 'a> {
     inner: &'a CVec<T>,
     pos: usize,
@@ -37,6 +48,17 @@ impl<'a, T> Iterator for CVecIter<'a, T> {
 /// Mutable iterator over [`CVec`].
 ///
 /// You can get it from the [`CVec::iter_mut`] method.
+///
+/// # Example
+///
+/// ```
+/// use c_vec::CVec;
+///
+/// let slice = &mut [0, 1, 2];
+/// let ptr = slice.as_mut_ptr();
+/// let mut cvec = unsafe { CVec::new(ptr, slice.len()) };
+/// let iter = cvec.iter_mut();
+/// ```
 pub struct CVecIterMut<'a, T: 'a> {
     inner: &'a mut CVec<T>,
     pos: usize,
@@ -55,7 +77,17 @@ impl<'a, T> Iterator for CVecIterMut<'a, T> {
     }
 }
 
-/// The type representing a foreign chunk of memory.
+/// The type representing a foreign mutable chunk of memory.
+///
+/// # Example
+///
+/// ```
+/// use c_vec::CVec;
+///
+/// let slice = &mut [0, 1, 2];
+/// let ptr = slice.as_mut_ptr();
+/// let cvec = unsafe { CVec::new(ptr, slice.len()) };
+/// ```
 pub struct CVec<T> {
     base: *mut T,
     len: usize,
@@ -80,6 +112,16 @@ impl<T> CVec<T> {
     ///
     /// * base - A unique pointer to a buffer
     /// * len - The number of elements in the buffer
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use c_vec::CVec;
+    ///
+    /// let slice = &mut [0, 1, 2];
+    /// let ptr = slice.as_mut_ptr();
+    /// let cvec = unsafe { CVec::new(ptr, slice.len()) };
+    /// ```
     pub unsafe fn new(base: *mut T, len: usize) -> CVec<T> {
         assert!(!base.is_null());
         CVec {
@@ -101,6 +143,16 @@ impl<T> CVec<T> {
     /// * dtor - A fn to run when the value is destructed, useful
     ///          for freeing the buffer, etc. `base` will be passed
     ///          to it as an argument.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use c_vec::CVec;
+    ///
+    /// let slice = &mut [0, 1, 2];
+    /// let ptr = slice.as_mut_ptr();
+    /// let cvec = unsafe { CVec::new_with_dtor(ptr, slice.len(), |_| println!("free time!")) };
+    /// ```
     pub unsafe fn new_with_dtor<F>(base: *mut T, len: usize, dtor: F) -> CVec<T>
     where
         F: FnOnce(*mut T) + 'static,
@@ -116,6 +168,17 @@ impl<T> CVec<T> {
 
     /// Retrieves an element at a given index, returning [`None`] if the requested
     /// index is greater than the length of the vector.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use c_vec::CVec;
+    ///
+    /// let slice = &mut [0, 1, 2];
+    /// let ptr = slice.as_mut_ptr();
+    /// let cvec = unsafe { CVec::new(ptr, slice.len()) };
+    /// assert_eq!(cvec.get(1), slice.get(1));
+    /// ```
     pub fn get(&self, ofs: usize) -> Option<&T> {
         if ofs < self.len {
             Some(unsafe { &*self.base.add(ofs) })
@@ -125,12 +188,39 @@ impl<T> CVec<T> {
     }
 
     /// Returns a reference to an element without doing any check.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use c_vec::CVec;
+    ///
+    /// let slice = &mut [0, 1, 2];
+    /// let ptr = slice.as_mut_ptr();
+    /// let cvec = unsafe { CVec::new(ptr, slice.len()) };
+    /// unsafe {
+    ///     assert_eq!(cvec.get_unchecked(1), slice.get_unchecked(1));
+    /// }
+    /// ```
     pub unsafe fn get_unchecked(&self, ofs: usize) -> &T {
         &*self.base.add(ofs)
     }
 
     /// Retrieves a mutable element at a given index, returning [`None`] if the
     /// requested index is greater than the length of the vector.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use c_vec::CVec;
+    ///
+    /// let slice = &mut [0, 1, 2];
+    /// let ptr = slice.as_mut_ptr();
+    /// let mut cvec = unsafe { CVec::new(ptr, slice.len()) };
+    /// if let Some(el) = cvec.get_mut(1) {
+    ///     *el += 10;
+    /// }
+    /// assert_eq!(cvec[1], 11);
+    /// ```
     pub fn get_mut(&mut self, ofs: usize) -> Option<&mut T> {
         if ofs < self.len {
             Some(unsafe { &mut *self.base.add(ofs) })
@@ -140,6 +230,18 @@ impl<T> CVec<T> {
     }
 
     /// Returns a mutable reference to an element without doing any check.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use c_vec::CVec;
+    ///
+    /// let slice = &mut [0, 1, 2];
+    /// let ptr = slice.as_mut_ptr();
+    /// let mut cvec = unsafe { CVec::new(ptr, slice.len()) };
+    /// unsafe { *cvec.get_unchecked_mut(1) += 10; }
+    /// assert_eq!(cvec[1], 11);
+    /// ```
     pub unsafe fn get_unchecked_mut<'a>(&'a mut self, ofs: usize) -> &mut T {
         &mut *self.base.add(ofs)
     }
@@ -154,22 +256,66 @@ impl<T> CVec<T> {
     /// Note that if you want to access the underlying pointer without
     /// cancelling the destructor, you can simply call `transmute` on the return
     /// value of [`CVec::get`]`(0)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use c_vec::CVec;
+    ///
+    /// let slice = &mut [0, 1, 2];
+    /// let ptr = slice.as_mut_ptr();
+    /// let cvec = unsafe { CVec::new(ptr, slice.len()) };
+    /// assert_eq!(unsafe { cvec.into_inner() }, ptr);
+    /// ```
     pub unsafe fn into_inner(mut self) -> *mut T {
         self.dtor = None;
         self.base
     }
 
     /// Returns the number of items in this vector.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use c_vec::CVec;
+    ///
+    /// let slice = &mut [0, 1, 2];
+    /// let ptr = slice.as_mut_ptr();
+    /// let cvec = unsafe { CVec::new(ptr, slice.len()) };
+    /// assert_eq!(cvec.len(), slice.len());
+    /// ```
     pub fn len(&self) -> usize {
         self.len
     }
 
     /// Returns whether this vector is empty.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use c_vec::CVec;
+    ///
+    /// let slice = &mut [0, 1, 2];
+    /// let ptr = slice.as_mut_ptr();
+    /// let cvec = unsafe { CVec::new(ptr, slice.len()) };
+    /// assert_eq!(cvec.is_empty(), slice.is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
     /// Returns a [`CSlice`] which is a "view" over the data.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use c_vec::CVec;
+    ///
+    /// let slice = &mut [0, 1, 2];
+    /// let ptr = slice.as_mut_ptr();
+    /// let cvec = unsafe { CVec::new(ptr, slice.len()) };
+    /// let cslice = cvec.as_cslice();
+    /// ```
     pub fn as_cslice<'a>(&'a self) -> CSlice<'a, T> {
         CSlice {
             base: self.base,
@@ -179,6 +325,17 @@ impl<T> CVec<T> {
     }
 
     /// Returns a [`CSliceMut`] which is a mutable "view" over the data.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use c_vec::CVec;
+    ///
+    /// let slice = &mut [0, 1, 2];
+    /// let ptr = slice.as_mut_ptr();
+    /// let mut cvec = unsafe { CVec::new(ptr, slice.len()) };
+    /// let cslice = cvec.as_cslice_mut();
+    /// ```
     pub fn as_cslice_mut<'a>(&'a mut self) -> CSliceMut<'a, T> {
         CSliceMut {
             base: self.base,
@@ -187,7 +344,20 @@ impl<T> CVec<T> {
         }
     }
 
-    /// Returns an iterator over `CVec`.
+    /// Returns an iterator over `CVec` data.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use c_vec::CVec;
+    ///
+    /// let slice = &mut [0, 1, 2];
+    /// let ptr = slice.as_mut_ptr();
+    /// let cvec = unsafe { CVec::new(ptr, slice.len()) };
+    /// for elem in cvec.iter() {
+    ///     println!("=> {}", elem);
+    /// }
+    /// ```
     pub fn iter<'a>(&'a self) -> CVecIter<'a, T> {
         CVecIter {
             inner: self,
@@ -195,7 +365,21 @@ impl<T> CVec<T> {
         }
     }
 
-    /// Returns a mutable iterator over `CVecMut`.
+    /// Returns a mutable iterator over `CVec` data.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use c_vec::CVec;
+    ///
+    /// let slice = &mut [0, 1, 2];
+    /// let ptr = slice.as_mut_ptr();
+    /// let mut cvec = unsafe { CVec::new(ptr, slice.len()) };
+    /// for elem in cvec.iter_mut() {
+    ///     *elem += 1;
+    /// }
+    /// assert_eq!(cvec[0], 1);
+    /// ```
     pub fn iter_mut<'a>(&'a mut self) -> CVecIterMut<'a, T> {
         CVecIterMut {
             inner: self,

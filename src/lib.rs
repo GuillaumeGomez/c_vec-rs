@@ -31,6 +31,19 @@
 //! C, but care must be taken that the ownership of underlying resources are
 //! handled correctly, i.e. that allocated memory is eventually freed
 //! if necessary.
+//!
+//! # Example
+//!
+//! ```
+//! use c_vec::CVec;
+//!
+//! let slice = &mut [0, 1, 2];
+//! let ptr = slice.as_mut_ptr();
+//! let cvec = unsafe { CVec::new(ptr, slice.len()) };
+//! for elem in cvec.iter() {
+//!     println!("=> {}", elem);
+//! }
+//! ```
 
 #[cfg(test)]
 #[macro_use]
